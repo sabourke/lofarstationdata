@@ -1,6 +1,7 @@
 from casacore.measures import measures, is_measure
 from casacore.quanta import quantity
 from .datetime_casacore import datetime_casacore
+import datetime
 import numpy as np
 
 
@@ -36,7 +37,7 @@ class UVW(object):
             self.set_measure(value)
         elif isinstance(value, datetime_casacore):
             self.set_measure(value.epoch())
-        elif isinstance(value, datetime):
+        elif isinstance(value, datetime.datetime):
             self.set_measure(datetime_casacore.from_datetime(value).epoch())
         elif isinstance(value, float):
             self.set_measure(self._measures.epoch("UTC", quantity(value, "s")))

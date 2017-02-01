@@ -21,7 +21,16 @@ Dependencies
 
 * Python 2.7 or higher
 * [python-casacore](https://github.com/casacore/python-casacore) (which in turn depends on casacore)
+* casacore-data (see below)
 * NumPy
+
+Casacore data:
+
+If you want to maintain your own casacore data directory or use the one
+from NRAO's Casa package you can specify its location in ```~/.casarc```
+Eg:
+
+    measures.directory: /opt/casa-release-4.7.0-el7/data
 
 Installation
 ------------

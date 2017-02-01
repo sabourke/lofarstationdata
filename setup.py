@@ -24,7 +24,7 @@ setup(
         'Topic :: Utilities',
         ],
     install_requires=['numpy', 'python-casacore'],
-    packages=find_packages(exclude=['tests']),
+    packages=find_packages(exclude=['tests','examples']),
     package_data={'lofarstation': ['AntennaFields/*']},
     entry_points={
         'console_scripts': [
