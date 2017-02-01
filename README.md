@@ -94,6 +94,13 @@ Example:
 Python Examples
 ---------------
 
+There is a directory example code and a XST sample in the ```examples```
+subdirectory (an ACC was not included because of their size). These will
+not be installed with ```pip``` so you need to clone the repository to
+get them:
+
+    git clone https://github.com/sabourke/lofarstationdata
+
 ACC Example:
 
     from lofarstation.stationdata import ACCData
