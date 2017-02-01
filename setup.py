@@ -4,7 +4,7 @@ description = "lofarstation: Work with xst and acc data station data."
 long_description = description
 
 setup(
-    name='lofarstation',
+    name='lofarstationdata',
     author='Stephen Bourke',
     version=0.8,
     url='http://github.com/sabourke/lofarstation/',
