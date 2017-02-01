@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from lofarstation.stationdata import ACCData
 from casacore.measures import measures
 import glob
@@ -20,7 +21,7 @@ def beam_from_acc_dir(accdir, rcu, outnpy):
 
 def main():
     if len(sys.argv) != 4:
-        print >> sys.stderr, "Usage: %s <acc_directory> <rcu> <outnpy>" % sys.argv[0]
+        print("Usage: {} <acc_directory> <rcu> <outnpy>".format(sys.argv[0]), file=sys.stderr)
         sys.exit()
     dirname, rcu, outfile = sys.argv[1:]
     rcu = int(rcu)

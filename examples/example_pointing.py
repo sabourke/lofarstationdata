@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from lofarstation.stationdata import ACCData
 from casacore.measures import measures
 
@@ -12,7 +13,7 @@ sd = ACCData("20161231_133057_acc_512x192x192.dat",
 # Print time, freq, flux in the direction of CygA
 sd.direction = CygA
 for i in range(sd.n_time):
-    print sd.time[i], sd.frequency[i][0], sd.data[i].mean().real
+    print(sd.time[i], sd.frequency[i][0], sd.data[i].mean().real)
 
 # Write a MS centred on CasA
 sd.direction = CasA

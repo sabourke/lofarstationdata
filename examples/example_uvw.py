@@ -1,3 +1,4 @@
+from __future__ import print_function
 from lofarstation.uvw import UVW
 from lofarstation import antfield
 import numpy as np
@@ -16,14 +17,14 @@ uvw = UVW(ant_pos)
 uvw.set_position(ref_pos)
 uvw.set_direction(["AZELGEO", "0deg", "90deg"])
 uvw.set_time(time)
-print uvw[23,30]
+print(uvw[23,30])
 
 uvw.set_direction(["J2000", "20h00m", "30d23m"])
 uvw.set_time(datetime(2017, 1, 1, 12, 30, 0))
-print uvw[23,30]
+print(uvw[23,30])
 
 uvw_arr = uvw()
-print uvw_arr.shape
+print(uvw_arr.shape)
 
 baseline_uvw = uvw.packed()
-print baseline_uvw.shape
+print(baseline_uvw.shape)
