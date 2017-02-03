@@ -3,7 +3,7 @@
 from __future__ import division
 from __future__ import absolute_import
 from casacore.measures import measures
-from .stationdata import RCUMode, XSTData, ACCData
+from .stationdata import RCUMode, XSTData, ACCData, AARTFAACData
 from datetime import datetime
 import sys
 import re
@@ -24,7 +24,7 @@ def create_parser():
     parser.add_argument("-d", "--direction", type=str, default=None)
     exclusive.add_argument("-x", "--xst", help="File is an XST capture (default, unless filename is standard ACC format)", action="store_true")
     exclusive.add_argument("-a", "--acc", help="File is an ACC capture", action="store_true")
-    exclusive.add_argument("-c", "--cal", help="File is an AARTFAAC .cal file", action="store_true")
+    exclusive.add_argument("-z", "--cal", help="File is an AARTFAAC .cal file", action="store_true")
     parser.add_argument("-q", "--quiet", help="Only display warnings and errors", action="store_true")
     parser.add_argument("indata", help="Input data file name", type=str)
     parser.add_argument("msname", help="Output Measurement Set name", type=str, nargs="?")
@@ -78,5 +78,4 @@ def main():
     else:
         station_data = XSTData(args.indata, args.rcumode, args.subband, args.integration, args.antfield, args.starttime, args.direction, args.stationname)
 
-    station_data.set_raw_data (args.indata)
     station_data.write_ms(args.msname, args.stationname)

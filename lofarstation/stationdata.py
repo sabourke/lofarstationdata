@@ -10,7 +10,7 @@ import numpy as np
 import logging
 import os.path
 import re
-import vismanip as vism
+import vistools.vismanip as vism
 
 
 C = 299792458.0
@@ -74,6 +74,7 @@ class XCStationData(object):
         self._set_frequency(subband)
         self.station_name = station_name
         self._set_antenna_field(antfile)
+        self._set_raw_data (datafile)
         self._set_time(start_time)
         if direction == None:
             self.direction = measures().direction("AZELGEO", "0deg", "90deg")
@@ -364,23 +365,46 @@ class ACCData(XCStationData):
             super(ACCData, self)._set_time(start_time, offset=-512)
 
 class AARTFAACData (XCStationData):
-    vis   = None # TransitVis object reference
+    vis     = None # TransitVis object reference
+    trilind = None
+    acm     = None # Temporary store of a single ACM.
 
-    def __init__(self, datafile, rcu_mode, subband=-1, antfile="", start_time=None, direction=None, station_name=""):
+    def __init__(self, datafile, rcu_mode, subband=-1, antfile="", \
+                start_time=None, direction=None, station_name=""):
+
         self.vis = vism.TransitVis (datafile)
 
-        super(AARTFAACData, self).__init__(datafile, rcu_mode, subband, 1.0, antfile, vis.tfilestart, direction, station_name)
+        super(AARTFAACData, self).__init__(self.vis, rcu_mode, subband, \
+            self.vis.dt.seconds, antfile, self.vis.tfilestart, direction, station_name)
+
+        if self.trilind is None:
+            self.trilind = np.tril_indices (self.n_ant)
+
+        if self.acm is None:
+            self.acm = np.zeros ( (self.n_ant, self.n_ant), dtype=np.complex64)
 
 
-    def _set_raw_data ():
-        # TODO: Override base class functionality with a (multiple?) TransitVis read
+    # NOTE: We misappropriate the datafile parameter to pass the TransitVis
+    # object. The superclass constructor assigns the datafile parameter to 
+    # the passed TransitVis, so we reassign the data filename here.
+    def _set_raw_data (self, datafile):
         ind = 0
-        self._raw_data = np.zeros (vis.nrec, self.n_ant, self.n_pol, self.n_ant, self.n_pol, dtype=np.complex128)
+        self.datafile = datafile.fname
+        self._raw_data = np.zeros ( (1, self.n_ant, self.n_pol, \
+                                self.n_ant, self.n_pol), dtype=np.complex64)
+        if self.acm is None:
+            self.acm = np.zeros ( (self.n_ant, self.n_ant), dtype=np.complex64)
+            
+        if self.trilind is None:
+            self.trilind = np.tril_indices (self.n_ant)
+
         # while ind < vis.nrec:
         try:
-            vis.read()
-            raw_data [ind, :,0,:,0] =  np.reshape (vis.vis[0], self.n_ant, self.n_pol, self.n_ant, self.n_pol);
-            # raw_data [ind, :,1,:,1] =  np.reshape (vis.vis[1], self.n_ant, self.n_pol, self.n_ant, self.n_pol);
+            datafile.read(None)
+            self.acm[self.trilind] = np.conjugate (datafile.vis[0])
+            self.acm = self.acm.transpose()
+            self.acm[self.trilind] = datafile.vis[0]
+            self._raw_data [ind, :,0,:,0] = self.acm 
         except:
             print 'Exception in reading from raw visibility file.'
-            break
+            # break
