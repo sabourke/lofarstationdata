@@ -24,6 +24,7 @@ def create_parser():
     parser.add_argument("-d", "--direction", type=str, default=None)
     exclusive.add_argument("-x", "--xst", help="File is an XST capture (default, unless filename is standard ACC format)", action="store_true")
     exclusive.add_argument("-a", "--acc", help="File is an ACC capture", action="store_true")
+    exclusive.add_argument("-c", "--cal", help="File is an AARTFAAC .cal file", action="store_true")
     parser.add_argument("-q", "--quiet", help="Only display warnings and errors", action="store_true")
     parser.add_argument("indata", help="Input data file name", type=str)
     parser.add_argument("msname", help="Output Measurement Set name", type=str, nargs="?")
@@ -37,7 +38,7 @@ def main():
     else:
         logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
     assert os.path.exists(args.indata)
-    
+
     # MS name
     if args.msname is None:
         if args.indata.endswith(".dat"):
@@ -56,13 +57,13 @@ def main():
             logging.critical("Could not convert string {} to casacore direction".format(args.direction))
             logging.critical("    eg: 0.23rad,2.1rad,J2000 or 19h23m23s,30d42m32s,J2000 ...")
             sys.exit(1)
-    
+
     # Start time
     if args.starttime != None:
         args.starttime = datetime.strptime(args.starttime, "%Y%m%d_%H%M%S")
 
     # XST / ACC
-    if not args.xst and not args.acc:
+    if not args.xst and not args.acc and not args.cal:
         if re.match("^\d{8}_\d{6}_acc_512x192x192.dat$", os.path.basename(args.indata)):
             logging.info("Assuming data is ACC based on filename")
             args.acc = True
@@ -72,6 +73,10 @@ def main():
     # Convert
     if args.acc:
         station_data = ACCData(args.indata, args.rcumode, args.subband, args.antfield, args.starttime, args.direction, args.stationname)
+    elif args.cal:
+        station_data = AARTFAACData (args.indata, args.rcumode, args.subband, args.antfield, args.starttime, args.direction, args.stationname)
     else:
         station_data = XSTData(args.indata, args.rcumode, args.subband, args.integration, args.antfield, args.starttime, args.direction, args.stationname)
+
+    station_data.set_raw_data (args.indata)
     station_data.write_ms(args.msname, args.stationname)

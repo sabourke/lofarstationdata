@@ -1,6 +1,6 @@
 from casacore.measures import measures
 from casacore.quanta import quantity
-from .meas_set import MeasurementSet 
+from .meas_set import MeasurementSet
 from . import antfield
 import datetime
 from datetime import timedelta
@@ -10,6 +10,7 @@ import numpy as np
 import logging
 import os.path
 import re
+import vismanip as vism
 
 
 C = 299792458.0
@@ -55,7 +56,7 @@ class RCUMode(object):
             raise RuntimeError("Unknown mode {}".format(mode))
         self.nyquist_frequency = self.clock_frequency / 2
         self.subband_width = self.nyquist_frequency / self.n_subband
-    
+
     def subband_centre_frequency(self, subband):
         # TODO: do aliased subband numbers accend or decend in frequency?
         return self.freq0 + subband * self.subband_width
@@ -64,7 +65,7 @@ class RCUMode(object):
 class XCStationData(object):
     _n_pol = 2 # Polarisations per antenna
     _n_channel = 1 # Frequencies per sub-band
-    
+
     def __init__(self, datafile, rcu_mode, subband, integration_time, antfile="", start_time=None, direction=None, station_name=""):
         self._datafile = datafile
         self.subband = subband
@@ -73,7 +74,6 @@ class XCStationData(object):
         self._set_frequency(subband)
         self.station_name = station_name
         self._set_antenna_field(antfile)
-        self._set_raw_data(datafile)
         self._set_time(start_time)
         if direction == None:
             self.direction = measures().direction("AZELGEO", "0deg", "90deg")
@@ -97,7 +97,7 @@ class XCStationData(object):
             t = start_time + i * t_delta + t_offset
             time.append(datetime_casacore.from_datetime(t))
         self._time = time
-    
+
     @property
     def frequency(self):
         return self._frequency
@@ -110,10 +110,10 @@ class XCStationData(object):
         frequency = []
         for sb in subband_list:
             frequency.append(channel_centre_frequencies(self.rcu_mode.subband_centre_frequency(sb),
-                                                          self.n_channel, 
+                                                          self.n_channel,
                                                           self.rcu_mode.subband_width/self.n_channel))
         self._frequency = np.array(frequency)
-    
+
     @property
     def wavelength(self):
         wl = np.empty_like(self._frequency)
@@ -121,18 +121,18 @@ class XCStationData(object):
         wl[locs] = C / self._frequency[locs]
         wl[np.invert(locs)] = np.inf
         return wl
-    
+
     @property
     def antenna_field(self):
         return self._antenna_field
-    
+
     def _antenna_field_from_station_name(self):
         antfield = os.path.join(os.path.split(__file__)[0], "AntennaFields/{}-AntennaField.conf".format(self.station_name))
         if os.path.exists(antfield):
             return antfield
         else:
             raise ValueError("No AntennaField conf found for station: {}".format(self.station_name))
-    
+
     def _set_antenna_field(self, antfile=""):
         if antfile == "":
             if self.station_name != "":
@@ -149,57 +149,57 @@ class XCStationData(object):
                 self.station_name = station_name_match.group("name")
             else:
                 self.station_name = DEFAULT_STATION_NAME
-    
+
     @property
     def n_subband(self):
         return self.frequency.shape[0]
-    
+
     @property
     def n_channel(self):
         return self._n_channel
-    
+
     @property
     def n_pol(self):
         return self._n_pol
-    
+
     @property
     def n_pol_out(self):
         return self.n_pol ** 2
-    
+
     @property
     def n_ant(self):
         return len(self.antenna_field[self.rcu_mode.band][1])
-    
+
     @property
     def n_baseline(self):
         return num_baselines(self.n_ant, autos=True)
-    
+
     @property
     def raw_data(self):
         return self._raw_data
-    
+
     def _set_raw_data(self, datafile):
         _raw_data = np.fromfile(datafile, dtype=np.complex128)
         self._raw_data = _raw_data.reshape((-1, self.n_ant, self.n_pol, self.n_ant, self.n_pol))
-    
+
     @property
     def n_time(self):
         return self.raw_data.shape[0]
-    
+
     @property
     def time(self):
         return self._time
-    
+
     @property
     def direction(self):
         return self._direction
-    
+
     @direction.setter
     def direction(self, value):
         self._direction = value
         self._uvw_valid = False
         self._data_valid = False
-    
+
     @property
     def position(self):
         return self._position
@@ -207,7 +207,7 @@ class XCStationData(object):
     @property
     def antenna_positions(self):
         return self._antenna_positions
-    
+
     def _calculate_uvw(self):
         uvw_machine = UVW(self.antenna_positions)
         uvw_machine.set_direction(self.direction)
@@ -219,13 +219,13 @@ class XCStationData(object):
             self._uvw[i] = uvw_machine()
         self._uvw_valid = True
         self._data_valid = False
-    
+
     @property
     def uvw(self):
         if not self._uvw_valid:
             self._calculate_uvw()
         return self._uvw
-    
+
     def _calculate_data(self):
         """Correct data for the geometric delay (w)"""
         w_shape = list(self.uvw.shape[:-1])
@@ -237,21 +237,21 @@ class XCStationData(object):
             phase[i] = np.exp(-2j * np.pi * w[i] / wl)
         self._data = self.raw_data * phase
         self._data_valid = True
-    
+
     @property
     def data(self):
         if not self._data_valid:
             self._calculate_data()
         return self._data
-    
+
     def packed_data(self):
         a1, a2 = np.triu_indices(self.n_ant)
         return np.swapaxes(self.data[:,a1,:,a2,:], 0, 1).reshape((-1,self.n_channel,self.n_pol_out))
-    
+
     def packed_uvw(self):
         a1, a2 = np.triu_indices(self.n_ant)
         return self.uvw[:,a1,a2,:].reshape((-1,3))
-    
+
     def write_ms(self, ms_name, station_name=""):
         """Write out Measurement Set"""
         logging.info("Creating Measurement Set")
@@ -284,7 +284,7 @@ class XCStationData(object):
         ms.main.putcol("UVW", self.packed_uvw())
         ms.main.putcolkeyword("UVW", "QuantumUnits", ["m","m","m"])
         ms.main.putcolkeyword("UVW", "MEASINFO", {"Ref": "J2000", "type": "uvw"})
-     
+
 
         # ANTENNA table
         logging.info("Populating ANTENNA Table")
@@ -301,7 +301,7 @@ class XCStationData(object):
                       "RECEPTOR_ANGLE": np.zeros(shape=(2,)), "BEAM_ID": -1, "FEED_ID": 0,
                       "INTERVAL": 0, "NUM_RECEPTORS": 2, "SPECTRAL_WINDOW_ID": -1, "TIME": time_mjd[0]}
         ms.feed.putcol("ANTENNA_ID", np.arange(self.n_ant))
-        
+
         # SPECTRAL_WINDOW table
         logging.info("Populating SPECTRAL_WINDOW and DATA_DESCRIPTION Tables")
         ms.spectralWindow.addrows(self.n_subband)
@@ -315,19 +315,19 @@ class XCStationData(object):
         # DATA_DESCRIPTION table
         ms.dataDescription.addrows(self.n_subband)
         ms.dataDescription.putcol("SPECTRAL_WINDOW_ID", np.arange(self.n_subband))
-    
+
         # OBSERVATION table
         logging.info("Populating OBSERVATION Table")
         ms.observation.addrows(1)
         ms.observation[0] = {"TELESCOPE_NAME": station_name, "OBSERVER": "Default",
                              "RELEASE_DATE": time_mjd[0], "TIME_RANGE": np.array([time_mjd[0], time_mjd[-1]]),
                              "PROJECT": "Default", "SCHEDULE_TYPE": "", "FLAG_ROW": False}
-        
+
         # POLARIZATION table
         logging.info("Populating POLARIZATION Table")
         ms.polarization.addrows(1)
         ms.polarization[0] = {"CORR_TYPE": np.array([9,10,11,12], dtype=np.int32), "CORR_PRODUCT": np.array([[0,0],[0,1],[1,0],[1,1]], dtype=np.int32), "NUM_CORR": self.n_pol_out}
-        
+
         # FIELD table
         ms.field.addrows(1)
         logging.info("Populating FIELD Table")
@@ -349,16 +349,38 @@ class XSTData(XCStationData):
 class ACCData(XCStationData):
     def __init__(self, datafile, rcu_mode, subband=-1, antfile="", start_time=None, direction=None, station_name=""):
         super(ACCData, self).__init__(datafile, rcu_mode, subband, 1.0, antfile, start_time, direction, station_name)
-    
+
     def _set_raw_data(self, datafile):
         super(ACCData, self)._set_raw_data(datafile)
         if self.subband >= 0:
             # Single subband (integration) selected
             self._raw_data = self._raw_data[np.newaxis,self.subband]
-    
+
     # TODO: Is the time in the ACC file name start time or end time?
     def _set_time(self, start_time):
         if self.subband >= 0:
             super(ACCData, self)._set_time(start_time, offset=self.subband-512)
         else:
             super(ACCData, self)._set_time(start_time, offset=-512)
+
+class AARTFAACData (XCStationData):
+    vis   = None # TransitVis object reference
+
+    def __init__(self, datafile, rcu_mode, subband=-1, antfile="", start_time=None, direction=None, station_name=""):
+        self.vis = vism.TransitVis (datafile)
+
+        super(AARTFAACData, self).__init__(datafile, rcu_mode, subband, 1.0, antfile, vis.tfilestart, direction, station_name)
+
+
+    def _set_raw_data ():
+        # TODO: Override base class functionality with a (multiple?) TransitVis read
+        ind = 0
+        self._raw_data = np.zeros (vis.nrec, self.n_ant, self.n_pol, self.n_ant, self.n_pol, dtype=np.complex128)
+        # while ind < vis.nrec:
+        try:
+            vis.read()
+            raw_data [ind, :,0,:,0] =  np.reshape (vis.vis[0], self.n_ant, self.n_pol, self.n_ant, self.n_pol);
+            # raw_data [ind, :,1,:,1] =  np.reshape (vis.vis[1], self.n_ant, self.n_pol, self.n_ant, self.n_pol);
+        except:
+            print 'Exception in reading from raw visibility file.'
+            break
