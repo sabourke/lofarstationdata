@@ -401,10 +401,17 @@ class AARTFAACData (XCStationData):
         # while ind < vis.nrec:
         try:
             datafile.read(None)
-            self.acm[self.trilind] = np.conjugate (datafile.vis[0])
-            self.acm = self.acm.transpose()
             self.acm[self.trilind] = datafile.vis[0]
-            self._raw_data [ind, :,0,:,0] = self.acm 
+            self.acm = self.acm.transpose()
+            self.acm[self.trilind] = np.conjugate (datafile.vis[0])
+            self._raw_data [ind, :,0,:,0] = self.acm  # XX pol
+
+            self.acm.fill(0)
+            self.acm[self.trilind] = datafile.vis[1]
+            self.acm = self.acm.transpose()
+            self.acm[self.trilind] = np.conjugate (datafile.vis[1])
+            self._raw_data [ind, :,1,:,1] = self.acm  # YY pol
+
         except:
             print 'Exception in reading from raw visibility file.'
             # break
