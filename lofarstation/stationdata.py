@@ -10,8 +10,6 @@ import numpy as np
 import logging
 import os.path
 import re
-import vistools.vismanip as vism
-
 
 C = 299792458.0
 DEFAULT_STATION_NAME = "LOFAR_STATION"
@@ -372,8 +370,16 @@ class AARTFAACData (XCStationData):
     def __init__(self, datafile, rcu_mode, subband=-1, antfile="", \
                 start_time=None, direction=None, station_name=""):
 
+        try:
+            import vistools.vismanip as vism
+        except ImportError:
+            print '### Unable to import AARTFAAC specific TransitVis. class.'
+            os.exit (-1)
+
         self.vis = vism.TransitVis (datafile)
 
+        # NOTE: The subclass's overloaded functions are called from within the
+        # base classes __init__()!
         super(AARTFAACData, self).__init__(self.vis, rcu_mode, subband, \
             self.vis.dt.seconds, antfile, self.vis.tfilestart, direction, station_name)
 
@@ -390,28 +396,40 @@ class AARTFAACData (XCStationData):
     def _set_raw_data (self, datafile):
         ind = 0
         self.datafile = datafile.fname
-        self._raw_data = np.zeros ( (1, self.n_ant, self.n_pol, \
+        print '<-- Writing out ', datafile.nrec, 'records to MS.'
+        self._raw_data = np.zeros ( (datafile.nrec, self.n_ant, self.n_pol, \
                                 self.n_ant, self.n_pol), dtype=np.complex64)
+
+        # NOTE: The time list can also be populated here, making _set_time a no-op.
+        self._time = []
+
         if self.acm is None:
             self.acm = np.zeros ( (self.n_ant, self.n_ant), dtype=np.complex64)
             
         if self.trilind is None:
             self.trilind = np.tril_indices (self.n_ant)
 
-        # while ind < vis.nrec:
-        try:
-            datafile.read(None)
-            self.acm[self.trilind] = datafile.vis[0]
-            self.acm = self.acm.transpose()
-            self.acm[self.trilind] = np.conjugate (datafile.vis[0])
-            self._raw_data [ind, :,0,:,0] = self.acm  # XX pol
+        while ind < datafile.nrec:
+            try:
+                datafile.read(None)
+                self.acm[self.trilind] = datafile.vis[0]
+                self.acm = self.acm.transpose()
+                self.acm[self.trilind] = np.conjugate (datafile.vis[0])
+                self._raw_data [ind, :,0,:,0] = self.acm  # XX pol
+    
+                self.acm.fill(0)
+                self.acm[self.trilind] = datafile.vis[1]
+                self.acm = self.acm.transpose()
+                self.acm[self.trilind] = np.conjugate (datafile.vis[1])
+                self._raw_data [ind, :,1,:,1] = self.acm  # YY pol
+    
+                self._time.append (datetime_casacore.from_datetime (datafile.trec))
+    
+            except:
+                print 'Exception in reading from raw visibility file.'
+                break
 
-            self.acm.fill(0)
-            self.acm[self.trilind] = datafile.vis[1]
-            self.acm = self.acm.transpose()
-            self.acm[self.trilind] = np.conjugate (datafile.vis[1])
-            self._raw_data [ind, :,1,:,1] = self.acm  # YY pol
-
-        except:
-            print 'Exception in reading from raw visibility file.'
-            # break
+    # Need to overload this function because AARTFAAC data cannot be assumed to be
+    # strictly sequential in time, like an XST file.
+    def _set_time(self, start_time, offset=0):
+        return 
