@@ -85,14 +85,16 @@ class XCStationData(object):
         if not match:
             raise ValueError("Start time not provided and could not deduce from file name")
         else:
-            return datetime_casacore(*[int(x) for x in match.groups()])
+            start_time = datetime_casacore(*[int(x) for x in match.groups()])
+            start_time -= timedelta(seconds=self.integration_time) # time in file name is end of first integration
+            return start_time
 
     def _set_time(self, start_time, offset=0):
         if start_time == None:
             start_time = self._start_time_from_filename()
         time = []
         t_delta = timedelta(seconds=self.integration_time)
-        t_offset = timedelta(seconds=offset)
+        t_offset = timedelta(seconds=offset) + t_delta / 2 # time values are midpoints so add half an integration
         for i in range(self.n_time):
             t = start_time + i * t_delta + t_offset
             time.append(datetime_casacore.from_datetime(t))
@@ -356,9 +358,9 @@ class ACCData(XCStationData):
             # Single subband (integration) selected
             self._raw_data = self._raw_data[np.newaxis,self.subband]
     
-    # TODO: Is the time in the ACC file name start time or end time?
+    # TODO: Confirm that ACC file name is end time
     def _set_time(self, start_time):
         if self.subband >= 0:
-            super(ACCData, self)._set_time(start_time, offset=self.subband-512)
+            super(ACCData, self)._set_time(start_time, offset=self.subband-RCUMode.n_subband)
         else:
-            super(ACCData, self)._set_time(start_time, offset=-512)
+            super(ACCData, self)._set_time(start_time, offset=-RCUMode.n_subband)
