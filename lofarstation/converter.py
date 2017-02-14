@@ -24,7 +24,7 @@ def create_parser():
     parser.add_argument("-d", "--direction", type=str, default=None, help="RA,DEC,epoch. The RA/DEC can be specified in a variety of ways acceptable by casacore measures, e.g.,0.23rad,2.1rad,J2000 or 19h23m23s,30d42m32s,J2000")
     exclusive.add_argument("-x", "--xst", help="File is an XST capture (default, unless filename is standard ACC format)", action="store_true")
     exclusive.add_argument("-a", "--acc", help="File is an ACC capture", action="store_true")
-    exclusive.add_argument("-z", "--cal", help="File is an AARTFAAC .cal file", action="store_true")
+    exclusive.add_argument("-z", "--aart", help="File is an AARTFAAC .cal or .vis file. In case of a raw correlator .vis file, please specify the subband number via the -s option. In case of a .cal file, this is extracted from the header. Please also specify the array name via -n [A6,A12]", action="store_true")
     parser.add_argument("-q", "--quiet", help="Only display warnings and errors", action="store_true")
     parser.add_argument("indata", help="Input data file name", type=str)
     parser.add_argument("msname", help="Output Measurement Set name", type=str, nargs="?")
@@ -63,7 +63,7 @@ def main():
         args.starttime = datetime.strptime(args.starttime, "%Y%m%d_%H%M%S")
 
     # XST / ACC
-    if not args.xst and not args.acc and not args.cal:
+    if not args.xst and not args.acc and not args.aart:
         if re.match("^\d{8}_\d{6}_acc_512x192x192.dat$", os.path.basename(args.indata)):
             logging.info("Assuming data is ACC based on filename")
             args.acc = True
@@ -73,7 +73,7 @@ def main():
     # Convert
     if args.acc:
         station_data = ACCData(args.indata, args.rcumode, args.subband, args.antfield, args.starttime, args.direction, args.stationname)
-    elif args.cal:
+    elif args.aart:
         station_data = AARTFAACData (args.indata, args.rcumode, args.subband, args.antfield, args.starttime, args.direction, args.stationname)
     else:
         station_data = XSTData(args.indata, args.rcumode, args.subband, args.integration, args.antfield, args.starttime, args.direction, args.stationname)

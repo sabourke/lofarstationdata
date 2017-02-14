@@ -376,12 +376,24 @@ class AARTFAACData (XCStationData):
             print '### Unable to import AARTFAAC specific TransitVis. class.'
             os.exit (-1)
 
-        self.vis = vism.TransitVis (datafile)
+        if station_name == 'A6':
+            nant = 288
+        elif station_name == 'A12':
+            nant = 576
+
+        if datafile.split('.')[-1] == 'vis':
+            nchan = 63
+        else:
+            nchan = 1
+
+        self.vis = vism.TransitVis (datafile, nant, subband, nchan, 'lba_outer')
+        print '<-- Record size: ', self.vis.recsize, ' Bytes.'
 
         # NOTE: The subclass's overloaded functions are called from within the
         # base classes __init__()!
-        super(AARTFAACData, self).__init__(self.vis, rcu_mode, subband, \
-            self.vis.dt.seconds, antfile, self.vis.tfilestart, direction, station_name)
+        super(AARTFAACData, self).__init__(self.vis, rcu_mode, self.vis.sub, \
+            self.vis.dt.seconds, antfile, self.vis.tfilestart, direction, \
+            station_name)
 
         if self.trilind is None:
             self.trilind = np.tril_indices (self.n_ant)
@@ -400,7 +412,7 @@ class AARTFAACData (XCStationData):
         self._raw_data = np.zeros ( (datafile.nrec, self.n_ant, self.n_pol, \
                                 self.n_ant, self.n_pol), dtype=np.complex64)
 
-        # NOTE: The time list can also be populated here, making _set_time a no-op.
+        # NOTE:The time list is also populated here, making _set_time a no-op.
         self._time = []
 
         if self.acm is None:
@@ -409,27 +421,41 @@ class AARTFAACData (XCStationData):
         if self.trilind is None:
             self.trilind = np.tril_indices (self.n_ant)
 
+        # for ind in range (0,30):
+        #     datafile.read_rec (None) # First 20 or so records are usually 0s.
+
+        ind = 0;
         while ind < datafile.nrec:
             try:
-                datafile.read(None)
-                self.acm[self.trilind] = datafile.vis[0]
+                datafile.read_rec (None)
+                if self.vis.nchan > 1: # Indicates a raw .vis file.
+                    meanacm = np.mean (datafile.vis, axis=1)
+                else:                  # .cal files always have nchan = 1
+                    meanacm = datafile.vis[:,0,:]
+
+                self.acm[self.trilind] = meanacm[:,0]
                 self.acm = self.acm.transpose()
-                self.acm[self.trilind] = np.conjugate (datafile.vis[0])
+                self.acm[self.trilind] = np.conjugate (meanacm[:,0])
                 self._raw_data [ind, :,0,:,0] = self.acm  # XX pol
     
                 self.acm.fill(0)
-                self.acm[self.trilind] = datafile.vis[1]
+
+                self.acm[self.trilind] = meanacm[:,1]
                 self.acm = self.acm.transpose()
-                self.acm[self.trilind] = np.conjugate (datafile.vis[1])
+                self.acm[self.trilind] = np.conjugate (meanacm[:,1])
                 self._raw_data [ind, :,1,:,1] = self.acm  # YY pol
     
-                self._time.append (datetime_casacore.from_datetime (datafile.trec))
+                self._time.append (datetime_casacore.from_datetime 
+                                                            (datafile.trec))
     
             except:
                 print 'Exception in reading from raw visibility file.'
                 break
+            ind = ind + 1
+        print '<-- Missing records after file read: ', datafile.missrec
 
-    # Need to overload this function because AARTFAAC data cannot be assumed to be
-    # strictly sequential in time, like an XST file.
+    # Need to overload this function because AARTFAAC data cannot be assumed 
+    # to be strictly sequential in time, like an XST file. The time list is 
+    # already filled in the _set_raw_data () function.
     def _set_time(self, start_time, offset=0):
         return 
