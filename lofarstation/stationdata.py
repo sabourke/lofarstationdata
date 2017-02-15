@@ -1,6 +1,6 @@
 from casacore.measures import measures
 from casacore.quanta import quantity
-from .meas_set import MeasurementSet 
+from .meas_set import MeasurementSet
 from . import antfield
 import datetime
 from datetime import timedelta
@@ -112,7 +112,7 @@ class XCStationData(object):
         frequency = []
         for sb in subband_list:
             frequency.append(channel_centre_frequencies(self.rcu_mode.subband_centre_frequency(sb),
-                                                          self.n_channel, 
+                                                          self.n_channel,
                                                           self.rcu_mode.subband_width/self.n_channel))
         self._frequency = np.array(frequency)
     
@@ -364,3 +364,101 @@ class ACCData(XCStationData):
             super(ACCData, self)._set_time(start_time, offset=self.subband-RCUMode.n_subband)
         else:
             super(ACCData, self)._set_time(start_time, offset=-RCUMode.n_subband)
+
+class AARTFAACData (XCStationData):
+    vis     = None # TransitVis object reference
+    trilind = None
+    acm     = None # Temporary store of a single ACM.
+
+    def __init__(self, datafile, rcu_mode, subband=-1, antfile="", \
+                start_time=None, direction=None, station_name=""):
+
+        try:
+            import vistools.vismanip as vism
+        except ImportError:
+            print '### Unable to import AARTFAAC specific TransitVis. class.'
+            os.exit (-1)
+
+        if station_name == 'A6':
+            nant = 288
+        elif station_name == 'A12':
+            nant = 576
+
+        if datafile.split('.')[-1] == 'vis':
+            nchan = 63
+        else:
+            nchan = 1
+
+        self.vis = vism.TransitVis (datafile, nant, subband, nchan, 'lba_outer')
+        print '<-- Record size: ', self.vis.recsize, ' Bytes.'
+
+        # NOTE: The subclass's overloaded functions are called from within the
+        # base classes __init__()!
+        super(AARTFAACData, self).__init__(self.vis, rcu_mode, self.vis.sub, \
+            self.vis.dt.seconds, antfile, self.vis.tfilestart, direction, \
+            station_name)
+
+        if self.trilind is None:
+            self.trilind = np.tril_indices (self.n_ant)
+
+        if self.acm is None:
+            self.acm = np.zeros ( (self.n_ant, self.n_ant), dtype=np.complex64)
+
+
+    # NOTE: We misappropriate the datafile parameter to pass the TransitVis
+    # object. The superclass constructor assigns the datafile parameter to 
+    # the passed TransitVis, so we reassign the data filename here.
+    def _set_raw_data (self, datafile):
+        ind = 0
+        self.datafile = datafile.fname
+        print '<-- Writing out ', datafile.nrec, 'records to MS.'
+        self._raw_data = np.zeros ( (datafile.nrec, self.n_ant, self.n_pol, \
+                                self.n_ant, self.n_pol), dtype=np.complex64)
+
+        # NOTE:The time list is also populated here, making _set_time a no-op.
+        self._time = []
+
+        if self.acm is None:
+            self.acm = np.zeros ( (self.n_ant, self.n_ant), dtype=np.complex64)
+            
+        if self.trilind is None:
+            self.trilind = np.tril_indices (self.n_ant)
+
+        # for ind in range (0,30):
+        #     datafile.read_rec (None) # First 20 or so records are usually 0s.
+
+        ind = 0;
+        while ind < datafile.nrec:
+            try:
+                datafile.read_rec (None)
+                if self.vis.nchan > 1: # Indicates a raw .vis file.
+                    meanacm = np.mean (datafile.vis, axis=1)
+                else:                  # .cal files always have nchan = 1
+                    meanacm = datafile.vis[:,0,:]
+
+                self.acm[self.trilind] = meanacm[:,0]
+                self.acm = self.acm.transpose()
+                self.acm[self.trilind] = np.conjugate (meanacm[:,0])
+                self._raw_data [ind, :,0,:,0] = self.acm  # XX pol
+    
+                self.acm.fill(0)
+
+                self.acm[self.trilind] = meanacm[:,1]
+                self.acm = self.acm.transpose()
+                self.acm[self.trilind] = np.conjugate (meanacm[:,1])
+                self._raw_data [ind, :,1,:,1] = self.acm  # YY pol
+    
+                self._time.append (datetime_casacore.from_datetime 
+                                                            (datafile.trec))
+    
+            except:
+                print 'Exception in reading from raw visibility file.'
+                break
+            ind = ind + 1
+        print '<-- Missing records after file read: ', datafile.missrec
+
+    # Need to overload this function because AARTFAAC data cannot be assumed 
+    # to be strictly sequential in time, like an XST file. The time list is 
+    # already filled in the _set_raw_data () function.
+    def _set_time(self, start_time, offset=0):
+        return 
