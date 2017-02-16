@@ -392,7 +392,7 @@ class AARTFAACData (XCStationData):
         # NOTE: The subclass's overloaded functions are called from within the
         # base classes __init__()!
         super(AARTFAACData, self).__init__(self.vis, rcu_mode, self.vis.sub, \
-            self.vis.dt.seconds, antfile, self.vis.tfilestart, direction, \
+            self.vis.dt.total_seconds(), antfile, self.vis.tfilestart, direction, \
             station_name)
 
         if self.trilind is None:
