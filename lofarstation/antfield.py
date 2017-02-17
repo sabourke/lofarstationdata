@@ -62,4 +62,4 @@ def from_file(filename):
     return AntennaField
 
 if __name__ == "__main__":
-    print(json.dumps(read_file(sys.argv[1])))
+    print(json.dumps(from_file(sys.argv[1])))
