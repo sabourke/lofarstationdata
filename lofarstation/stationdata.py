@@ -367,7 +367,7 @@ class AARTFAACData (XCStationData):
     trilind = None
     acm     = None # Temporary store of a single ACM.
 
-    def __init__(self, datafile, rcu_mode, subband=-1, antfile="", \
+    def __init__(self, datafile, rcu_mode, subband=-1, nchan=63,antfile="", \
                 start_time=None, direction=None, station_name=""):
 
         try:
@@ -381,9 +381,7 @@ class AARTFAACData (XCStationData):
         elif station_name == 'A12':
             nant = 576
 
-        if datafile.split('.')[-1] == 'vis':
-            nchan = 63
-        else:
+        if datafile.split('.')[-1] != 'vis':
             nchan = 1
 
         self.vis = vism.TransitVis (datafile, nant, subband, nchan, 'lba_outer')

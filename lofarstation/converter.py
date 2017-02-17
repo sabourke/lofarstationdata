@@ -21,6 +21,7 @@ def create_parser():
     required.add_argument("-r", "--rcumode", type=int, choices=RCUMode.valid_modes, required=True)
     parser.add_argument("-s", "--subband", type=int, choices=list(range(RCUMode.n_subband)), metavar='0..{}'.format(RCUMode.n_subband-1), default=-1)
     parser.add_argument("-i", "--integration", type=float, default=1.0)
+    parser.add_argument("-f", "--nchan", type=int, default=1.0, help="Number of channels in the blob.")
     parser.add_argument("-d", "--direction", type=str, default=None, help="RA,DEC,epoch. The RA/DEC can be specified in a variety of ways acceptable by casacore measures, e.g.,0.23rad,2.1rad,J2000 or 19h23m23s,30d42m32s,J2000")
     exclusive.add_argument("-x", "--xst", help="File is an XST capture (default, unless filename is standard ACC format)", action="store_true")
     exclusive.add_argument("-a", "--acc", help="File is an ACC capture", action="store_true")
@@ -74,7 +75,7 @@ def main():
     if args.acc:
         station_data = ACCData(args.indata, args.rcumode, args.subband, args.antfield, args.starttime, args.direction, args.stationname)
     elif args.aart:
-        station_data = AARTFAACData (args.indata, args.rcumode, args.subband, args.antfield, args.starttime, args.direction, args.stationname)
+        station_data = AARTFAACData (args.indata, args.rcumode, args.subband,args.nchan, args.antfield, args.starttime, args.direction, args.stationname)
     else:
         station_data = XSTData(args.indata, args.rcumode, args.subband, args.integration, args.antfield, args.starttime, args.direction, args.stationname)
 
