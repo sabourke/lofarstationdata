@@ -6,6 +6,7 @@ import datetime
 from datetime import timedelta
 from .datetime_casacore import datetime_casacore
 from .uvw import UVW
+from collections import OrderedDict
 import numpy as np
 import logging
 import os.path
@@ -74,6 +75,7 @@ class XCStationData(object):
         self.station_name = station_name
         self._set_antenna_field(antfile)
         self._set_raw_data(datafile)
+        self._set_inital_cal()
         self._set_time(start_time)
         if direction == None:
             self.direction = measures().direction("AZELGEO", "0deg", "90deg")
@@ -99,6 +101,10 @@ class XCStationData(object):
             t = start_time + i * t_delta + t_offset
             time.append(datetime_casacore.from_datetime(t))
         self._time = time
+    
+    @property
+    def time(self):
+        return self._time
     
     @property
     def frequency(self):
@@ -153,6 +159,10 @@ class XCStationData(object):
                 self.station_name = DEFAULT_STATION_NAME
     
     @property
+    def n_time(self):
+        return self.raw_data.shape[0]
+    
+    @property
     def n_subband(self):
         return self.frequency.shape[0]
     
@@ -173,24 +183,20 @@ class XCStationData(object):
         return len(self.antenna_field[self.rcu_mode.band][1])
     
     @property
+    def n_inputs(self):
+        return self.n_ant * self.n_pol
+    
+    @property
     def n_baseline(self):
         return num_baselines(self.n_ant, autos=True)
+    
+    def _set_raw_data(self, datafile):
+        _raw_data = np.fromfile(datafile, dtype=np.complex128)
+        self._raw_data = _raw_data.reshape((-1, self.n_inputs, self.n_inputs))
     
     @property
     def raw_data(self):
         return self._raw_data
-    
-    def _set_raw_data(self, datafile):
-        _raw_data = np.fromfile(datafile, dtype=np.complex128)
-        self._raw_data = _raw_data.reshape((-1, self.n_ant, self.n_pol, self.n_ant, self.n_pol))
-    
-    @property
-    def n_time(self):
-        return self.raw_data.shape[0]
-    
-    @property
-    def time(self):
-        return self._time
     
     @property
     def direction(self):
@@ -209,35 +215,56 @@ class XCStationData(object):
     @property
     def antenna_positions(self):
         return self._antenna_positions
+
+    def _set_inital_cal(self):
+        self.cals = OrderedDict()
+        self.cals["geo"] = np.ones(shape=(self.n_ant), dtype=np.complex128)
     
     def _calculate_uvw(self):
         uvw_machine = UVW(self.antenna_positions)
         uvw_machine.set_direction(self.direction)
         position = measures().position("ITRF", *[quantity(x, "m") for x in self.position])
         uvw_machine.set_position(position)
-        self._uvw = np.empty(shape=(self.raw_data.shape[0],self.n_ant,self.n_ant,3), dtype=np.float64)
+        self._uvw0 = np.empty(shape=(self.n_time,self.n_ant,3), dtype=np.float64)
         for i,t in enumerate(self.time):
             uvw_machine.set_time(t.epoch())
-            self._uvw[i] = uvw_machine()
+            self._uvw0[i] = uvw_machine.uvw0
         self._uvw_valid = True
         self._data_valid = False
     
     @property
-    def uvw(self):
+    def uvw0(self):
         if not self._uvw_valid:
             self._calculate_uvw()
-        return self._uvw
+        return self._uvw0
+    
+    @property
+    def uvw(self):
+        return np.expand_dims(self.uvw0, 2) - np.expand_dims(self.uvw0, 1)
+    
+    def packed_uvw(self):
+        a1, a2 = np.triu_indices(self.n_ant)
+        return self.uvw[:,a1,a2,:].reshape((-1,3))
+    
+    @staticmethod
+    def complex_phase(omega):
+        return np.exp(-2j * np.pi * omega)
+    
+    def _delay_to_phase(self, delays):
+        wraps = delays * self.frequency
+        phase = self.complex_phase(wraps)
+        if phase.shape[-1] == self.n_ant:
+            # One value for antenna, repeat for 2 pols
+            phase = phase.repeat(2, axis=-1)
+        return phase
     
     def _calculate_data(self):
-        """Correct data for the geometric delay (w)"""
-        w_shape = list(self.uvw.shape[:-1])
-        w_shape.insert(2,1)
-        w_shape.insert(4,1)
-        w = self.uvw[:,:,:,2].reshape(w_shape)
-        phase = np.empty(shape=w.shape, dtype=np.complex128)
-        for i, wl in enumerate(np.atleast_1d(self.wavelength.squeeze())):
-            phase[i] = np.exp(-2j * np.pi * w[i] / wl)
-        self._data = self.raw_data * phase
+        self.cals["geo"] = self._delay_to_phase(self.uvw0[...,2] / C)
+        self._data = self.raw_data
+        for name, cal in self.cals.items():
+            cal = cal[...,None] # add axis
+            # Transpose the last 2 axes
+            self._data = cal.swapaxes(-1,-2) * self._data * cal.conj()
         self._data_valid = True
     
     @property
@@ -248,11 +275,8 @@ class XCStationData(object):
     
     def packed_data(self):
         a1, a2 = np.triu_indices(self.n_ant)
-        return np.swapaxes(self.data[:,a1,:,a2,:], 0, 1).reshape((-1,self.n_channel,self.n_pol_out))
-    
-    def packed_uvw(self):
-        a1, a2 = np.triu_indices(self.n_ant)
-        return self.uvw[:,a1,a2,:].reshape((-1,3))
+        data = self.data.reshape((-1,self.n_ant,self.n_pol,self.n_ant,self.n_pol))
+        return data[:,a1,:,a2,:].swapaxes(0, 1).reshape((-1,self.n_channel,self.n_pol_out))
     
     def write_ms(self, ms_name, station_name=""):
         """Write out Measurement Set"""
@@ -454,6 +478,8 @@ class AARTFAACData (XCStationData):
                 break
             ind = ind + 1
         print '<-- Missing records after file read: ', datafile.missrec
+        self._raw_data = self._raw_data.reshape((datafile.nrec, \
+                            self.n_ant*self.n_pol, self.n_ant*self.n_pol))
 
     # Need to overload this function because AARTFAAC data cannot be assumed 
     # to be strictly sequential in time, like an XST file. The time list is 

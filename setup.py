@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-description = "lofarstation: Work with xst and acc data station data."
+description = "lofarstation: Work with XST, ACC and AARTFAAC data."
 long_description = description
 
 setup(

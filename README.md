@@ -1,10 +1,11 @@
-lofarstationdata: Python interface to Lofar single-station cross-correlation data
-=================================================================================
+lofarstationdata: Python interface to Lofar single-station and AARTFAAC cross-correlation data
+==============================================================================================
 
 This python module provides easy access to Lofar cross correlated station
-data (XST & ACC). UVWs and data corrected for geometric delay are automatically
-calculated. It can also write the data out as a Measurement Set. A command
-line utility is included for converting to Measurement Set.
+data (XST & ACC) and AARTFAAC data. UVWs and data corrected for geometric
+delay are automatically calculated. It can also write the data out as a
+Measurement Set. A command line utility is included for converting to
+Measurement Set.
 
 This was written for international stations but might also work for Dutch
 HBA stations. It would need modification to work with Dutch LBA -
@@ -60,7 +61,7 @@ The Measurement Set conversion tool is called lofar-station-ms:
     $ lofar-station-ms --help
     usage: lofar-station-ms [-h] [-c ANTFIELD] [-n STATIONNAME] [-t STARTTIME] -r
                             {3,5,6,7} [-s 0..511] [-i INTEGRATION] [-d DIRECTION]
-                            [-x | -a] [-q]
+                            [-x | -a | -z] [-q]
                             indata [msname]
     
     positional arguments:
@@ -79,9 +80,17 @@ The Measurement Set conversion tool is called lofar-station-ms:
       -s 0..511, --subband 0..511
       -i INTEGRATION, --integration INTEGRATION
       -d DIRECTION, --direction DIRECTION
+                            RA,DEC,epoch. The RA/DEC can be specified in a variety
+                            of ways acceptable by casacore measures,
+                            e.g.,0.23rad,2.1rad,J2000 or 19h23m23s,30d42m32s,J2000
       -x, --xst             File is an XST capture (default, unless filename is
                             standard ACC format)
       -a, --acc             File is an ACC capture
+      -z, --aart            File is an AARTFAAC .cal or .vis file. In case of a
+                            raw correlator .vis file, please specify the subband
+                            number via the -s option. In case of a .cal file, this
+                            is extracted from the header. Please also specify the
+                            array name via -n [A6,A12]
       -q, --quiet           Only display warnings and errors
     
     required arguments:

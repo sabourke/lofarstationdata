@@ -92,18 +92,21 @@ class UVW(object):
         self._measures.do_frame(self._properties_set["position"])
         self._uvw0 = np.array(self._measures.to_uvw(self._itrf_baselines)["xyz"].get_value("m")).reshape((-1,3)) # to_uvw converts to J2000
         self._up_to_date = True
+
+    @property
+    def uvw0(self):
+        """Return reference UVW values. These are relavtive to reference position."""
+        if not self._up_to_date:
+            self._update()
+        return self._uvw0
     
     def __getitem__(self, i2):
         """Returns the J2000 UVW for the two antennas specified"""
-        if not self._up_to_date:
-            self._update()
-        return self._uvw0[i2[0]] - self._uvw0[i2[1]]
+        return self.uvw0[i2[0]] - self.uvw0[i2[1]]
     
     def __call__(self):
         """Returns the full matrix of UVWs"""
-        if not self._up_to_date:
-            self._update()
-        return self._uvw0.reshape((-1,1,3)) - self._uvw0.reshape((1,-1,3))
+        return self.uvw0.reshape((-1,1,3)) - self.uvw0.reshape((1,-1,3))
     
     def packed(self):
         """Returns an array of lenght N_baselines of UVWs for the upper triangular correlation matrix"""
