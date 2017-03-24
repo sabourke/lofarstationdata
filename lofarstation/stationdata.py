@@ -77,6 +77,7 @@ class XCStationData(object):
         self._set_raw_data(datafile)
         self._set_inital_cal()
         self._set_time(start_time)
+        self._set_subband_id(subband)
         if direction == None:
             self.direction = measures().direction("AZELGEO", "0deg", "90deg")
         else:
@@ -97,7 +98,7 @@ class XCStationData(object):
         time = []
         t_delta = timedelta(seconds=self.integration_time)
         t_offset = timedelta(seconds=offset) + t_delta / 2 # time values are midpoints so add half an integration
-        for i in range(self.n_time):
+        for i in range(self.n_block):
             t = start_time + i * t_delta + t_offset
             time.append(datetime_casacore.from_datetime(t))
         self._time = time
@@ -110,17 +111,31 @@ class XCStationData(object):
     def frequency(self):
         return self._frequency
 
+    @property
+    def bandwidth(self):
+        return self._bandwidth
+
+    def _set_subband_id(self, subband):
+        """subband_id holds an index into the frequency array for each block"""
+        if subband == -1:
+            self.subband_id = np.arange(RCUMode.n_subband, dtype=np.int32)
+        else:
+            self.subband_id = np.zeros(self.n_block, dtype=np.int32)
+
     def _set_frequency(self, subband):
         if subband == -1:
             subband_list = range(RCUMode.n_subband)
         else:
             subband_list = [subband]
         frequency = []
+        bandwidth = []
         for sb in subband_list:
             frequency.append(channel_centre_frequencies(self.rcu_mode.subband_centre_frequency(sb),
                                                           self.n_channel,
                                                           self.rcu_mode.subband_width/self.n_channel))
+            bandwidth.append(np.full_like(frequency[-1], self.rcu_mode.subband_width/self.n_channel))
         self._frequency = np.array(frequency)
+        self._bandwidth = np.array(bandwidth)
     
     @property
     def wavelength(self):
@@ -159,7 +174,7 @@ class XCStationData(object):
                 self.station_name = DEFAULT_STATION_NAME
     
     @property
-    def n_time(self):
+    def n_block(self):
         return self.raw_data.shape[0]
     
     @property
@@ -192,7 +207,7 @@ class XCStationData(object):
     
     def _set_raw_data(self, datafile):
         _raw_data = np.fromfile(datafile, dtype=np.complex128)
-        self._raw_data = _raw_data.reshape((-1, self.n_inputs, self.n_inputs))
+        self._raw_data = _raw_data.reshape((-1, self.n_inputs, self.n_inputs, self.n_channel))
     
     @property
     def raw_data(self):
@@ -225,7 +240,7 @@ class XCStationData(object):
         uvw_machine.set_direction(self.direction)
         position = measures().position("ITRF", *[quantity(x, "m") for x in self.position])
         uvw_machine.set_position(position)
-        self._uvw0 = np.empty(shape=(self.n_time,self.n_ant,3), dtype=np.float64)
+        self._uvw0 = np.empty(shape=(self.n_block,self.n_ant,3), dtype=np.float64)
         for i,t in enumerate(self.time):
             uvw_machine.set_time(t.epoch())
             self._uvw0[i] = uvw_machine.uvw0
@@ -251,22 +266,22 @@ class XCStationData(object):
         return np.exp(-2j * np.pi * omega)
     
     def _delay_to_phase(self, delays):
-        wraps = delays * self.frequency
-        phase = self.complex_phase(wraps)
-        if phase.shape[-1] == self.n_ant:
+        # Want n_block * n_input * n_channel
+        if delays.shape[-1] == self.n_ant:
             # One value for antenna, repeat for 2 pols
-            phase = phase.repeat(2, axis=-1)
+            delays = delays.repeat(2, axis=-1)[:,:,np.newaxis] # shape is n_block * n_inputs * 1
+        freqs = self.frequency[self.subband_id][:,np.newaxis,:]  # shape is n_block * 1 * n_channel
+        wraps = delays * freqs # shape is n_block * n_input * n_channel
+        phase = self.complex_phase(wraps)
         return phase
     
     def _calculate_data(self):
         self.cals["geo"] = self._delay_to_phase(self.uvw0[...,2] / C)
         self._data = self.raw_data
         for name, cal in self.cals.items():
-            cal = cal[...,None] # add axis
-            # Transpose the last 2 axes
-            self._data = cal.swapaxes(-1,-2) * self._data * cal.conj()
+            self._data = cal[:,:,np.newaxis,:] * self._data * cal[:,np.newaxis,:,:].conj()
         self._data_valid = True
-    
+
     @property
     def data(self):
         if not self._data_valid:
@@ -275,8 +290,13 @@ class XCStationData(object):
     
     def packed_data(self):
         a1, a2 = np.triu_indices(self.n_ant)
-        data = self.data.reshape((-1,self.n_ant,self.n_pol,self.n_ant,self.n_pol))
-        return data[:,a1,:,a2,:].swapaxes(0, 1).reshape((-1,self.n_channel,self.n_pol_out))
+        # Reorder to block, dummy, ant1, pol1, ant2, pol2, channel
+        data = self.data.reshape((-1,1,self.n_ant,self.n_pol,self.n_ant,self.n_pol,self.n_channel))
+        data = data[:,:,a1,:,a2,:,:] # baseline, block, dummy, pol, pol, channel
+        data = data.swapaxes(0, 1) # baseline <-> block
+        data = data.swapaxes(2, -1) # dummy <-> channel
+        data = data.reshape((-1,self.n_channel,self.n_pol_out)) # merge block & baseline, pols
+        return data
     
     def write_ms(self, ms_name, station_name=""):
         """Write out Measurement Set"""
@@ -288,11 +308,11 @@ class XCStationData(object):
 
         # MAIN table
         logging.info("Populating MAIN Table")
-        n_rows = self.n_time * self.n_baseline
+        n_rows = self.n_block * self.n_baseline
         ms.main.addrows(n_rows)
         ant1, ant2 = np.triu_indices(self.n_ant)
-        ms.main.putcol("ANTENNA1", np.tile(ant1, self.n_time))
-        ms.main.putcol("ANTENNA2", np.tile(ant2, self.n_time))
+        ms.main.putcol("ANTENNA1", np.tile(ant1, self.n_block))
+        ms.main.putcol("ANTENNA2", np.tile(ant2, self.n_block))
         ms.main.putcol("WEIGHT", np.ones(shape=(n_rows, self.n_pol_out), dtype=np.float64))
         ms.main.putcol("SIGMA", np.ones(shape=(n_rows, self.n_pol_out), dtype=np.float64))
         ms.main.putcol("INTERVAL", np.full((n_rows,), self.integration_time, dtype=np.float64))
@@ -300,10 +320,7 @@ class XCStationData(object):
         time_mjd = np.array([t.mjd_seconds() for t in self.time])
         ms.main.putcol("TIME", np.repeat(time_mjd, self.n_baseline))
         ms.main.putcol("TIME_CENTROID", np.repeat(time_mjd, self.n_baseline))
-        if self.n_subband > 1:
-            ms.main.putcol("DATA_DESC_ID", np.repeat(np.arange(self.n_subband), self.n_baseline))
-        else:
-            ms.main.putcol("DATA_DESC_ID", np.zeros(shape=(self.n_time * self.n_baseline),dtype=np.int32))
+        ms.main.putcol("DATA_DESC_ID", np.repeat(self.subband_id, self.n_baseline))
         data = self.packed_data()
         ms.main.putcol("DATA", data)
         ms.main.putcol("FLAG", np.zeros(shape=data.shape, dtype="bool"))
@@ -331,12 +348,11 @@ class XCStationData(object):
         # SPECTRAL_WINDOW table
         logging.info("Populating SPECTRAL_WINDOW and DATA_DESCRIPTION Tables")
         ms.spectralWindow.addrows(self.n_subband)
-        channel_bandwidth = np.full((self.n_channel,), self.rcu_mode.subband_width / self.n_channel)
-        ms.spectralWindow[:] = {"MEAS_FREQ_REF": 1, "CHAN_WIDTH": channel_bandwidth, "EFFECTIVE_BW": channel_bandwidth,
-                                "RESOLUTION": channel_bandwidth, "FLAG_ROW": False, "FREQ_GROUP": 0, "FREQ_GROUP_NAME": "Group 1",
-                                "IF_CONV_CHAIN": 0, "NET_SIDEBAND": 1, "NUM_CHAN": self.n_channel, "TOTAL_BANDWIDTH": self.rcu_mode.subband_width}
-        for i, channel_frequencies in enumerate(self.frequency):
-            ms.spectralWindow[i] = {"CHAN_FREQ": channel_frequencies, "REF_FREQUENCY": channel_frequencies[0], "NAME": "SPW{:03d}".format(i)}
+        for i in range(len(self.frequency)):
+            ms.spectralWindow[i] = {"CHAN_FREQ": self.frequency[i], "REF_FREQUENCY": self.frequency[i,0], "NAME": "SPW{:03d}".format(i),
+                                    "MEAS_FREQ_REF": 1, "CHAN_WIDTH": self.bandwidth[i], "EFFECTIVE_BW": self.bandwidth[i],
+                                    "RESOLUTION": self.bandwidth[i], "FLAG_ROW": False, "FREQ_GROUP": 0, "FREQ_GROUP_NAME": "Group 1",
+                                    "IF_CONV_CHAIN": 0, "NET_SIDEBAND": 1, "NUM_CHAN": self.n_channel, "TOTAL_BANDWIDTH": self.bandwidth[i].sum()}
 
         # DATA_DESCRIPTION table
         ms.dataDescription.addrows(self.n_subband)
@@ -486,3 +502,22 @@ class AARTFAACData (XCStationData):
     # already filled in the _set_raw_data () function.
     def _set_time(self, start_time, offset=0):
         return 
+
+class TBBXCData(XCStationData):
+    def __init__(self, datafile, rcu_mode, integration_time, antfile="", start_time=None, direction=None, station_name=""):
+        self._raw_data = np.load(datafile)
+        super(TBBXCData, self).__init__(datafile, rcu_mode, 0, integration_time, antfile, start_time, direction, station_name)
+
+    def _set_raw_data(self, datafile):
+        pass
+
+    @property
+    def n_channel(self):
+        return self._raw_data.shape[3]
+
+    def _set_frequency(self, not_used):
+        total_bandwidth = self.rcu_mode.nyquist_frequency
+        centre_freq = self.rcu_mode.freq0 + total_bandwidth / 2
+        channel_width = total_bandwidth / (self.n_channel-1)
+        self._frequency = np.array([channel_centre_frequencies(centre_freq, self.n_channel, channel_width)])
+        self._bandwidth = np.full_like(self._frequency, channel_width)
