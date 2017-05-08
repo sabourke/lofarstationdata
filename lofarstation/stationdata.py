@@ -7,6 +7,7 @@ from datetime import timedelta
 from .datetime_casacore import datetime_casacore
 from .uvw import UVW
 from collections import OrderedDict
+from stationcal import stationcal
 import numpy as np
 import logging
 import os.path
@@ -274,6 +275,15 @@ class XCStationData(object):
         wraps = delays * freqs # shape is n_block * n_input * n_channel
         phase = self.complex_phase(wraps)
         return phase
+
+    def set_station_cal(self, calfile):
+        gains = stationcal(calfile).cal_data
+        freqs, inputs = gains.shape
+        assert inputs == self.n_inputs or inputs == 1
+        if self.subband >= 0:
+            gains = gains[np.newaxis,self.subband,:]
+        self.cals["station"] = gains[:,:,np.newaxis]
+        self._data_valid = False
     
     def _calculate_data(self):
         self.cals["geo"] = self._delay_to_phase(self.uvw0[...,2] / C)

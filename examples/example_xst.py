@@ -14,3 +14,6 @@ sd = XSTData("20151122_125835_xst.dat", subband=307, rcu_mode=3,
 print(sd.time[0])
 print("{} MHz".format(sd.frequency / 1e6))
 sd.write_ms("xst1.ms")
+
+sd.set_station_cal("CalTable-SE607-mode3-2015.10.07.dat")
+sd.write_ms("xst1-cal.ms")

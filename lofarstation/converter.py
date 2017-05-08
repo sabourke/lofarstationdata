@@ -17,6 +17,7 @@ def create_parser():
     exclusive = parser.add_mutually_exclusive_group()
     parser.add_argument("-c", "--antfield", type=str, help="Lofar station AntennaField.conf file", default="")
     parser.add_argument("-n", "--stationname", type=str, help="Station name for MS antenna and observation tables", default="")
+    parser.add_argument("-l", "--stationcal", type=str, help="Station Calibration file to apply", default="")
     parser.add_argument("-t", "--starttime", type=str, help="Start time (centre point of first integration), YYYYMMDD_HHMMSS")
     required.add_argument("-r", "--rcumode", type=int, choices=RCUMode.valid_modes, required=True)
     parser.add_argument("-s", "--subband", type=int, choices=list(range(RCUMode.n_subband)), metavar='0..{}'.format(RCUMode.n_subband-1), default=-1)
@@ -82,4 +83,6 @@ def main():
     else:
         station_data = XSTData(args.indata, args.rcumode, args.subband, args.integration, args.antfield, args.starttime, args.direction, args.stationname)
 
+    if args.stationcal:
+        station_data.set_station_cal(args.stationcal)
     station_data.write_ms(args.msname, args.stationname)

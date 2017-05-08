@@ -1,5 +1,5 @@
-lofarstationdata: Python interface to Lofar single-station and AARTFAAC cross-correlation data
-==============================================================================================
+lofarstationdata: Python interface to Lofar single-station cross-correlation data
+=================================================================================
 
 This python module provides easy access to Lofar cross correlated station
 data (XST & ACC) and AARTFAAC data. UVWs and data corrected for geometric
@@ -16,6 +16,9 @@ Antenna positions are obtained from Lofar's AntennaField.conf files
 ([link](https://svn.astron.nl/LOFAR/trunk/MAC/Deployment/data/StaticMetaData/AntennaFields/)).
 A set is included with this package which will be used by default as
 long as you specify the station name.
+
+Station calibration tables can be applied. These may be found in ```/opt/lofar/etc```
+on the station LCU.
 
 Dependencies
 ------------
@@ -59,9 +62,10 @@ Usage
 The Measurement Set conversion tool is called lofar-station-ms:
 
     $ lofar-station-ms --help
-    usage: lofar-station-ms [-h] [-c ANTFIELD] [-n STATIONNAME] [-t STARTTIME] -r
-                            {3,5,6,7} [-s 0..511] [-i INTEGRATION] [-d DIRECTION]
-                            [-x | -a | -z] [-q]
+    usage: lofar-station-ms [-h] [-c ANTFIELD] [-n STATIONNAME] [-l STATIONCAL]
+                            [-t STARTTIME] -r {3,5,6,7} [-s 0..511]
+                            [-i INTEGRATION] [-f NCHAN] [-d DIRECTION]
+                            [-x | -a | -z | -b] [-q]
                             indata [msname]
     
     positional arguments:
@@ -74,11 +78,15 @@ The Measurement Set conversion tool is called lofar-station-ms:
                             Lofar station AntennaField.conf file
       -n STATIONNAME, --stationname STATIONNAME
                             Station name for MS antenna and observation tables
+      -l STATIONCAL, --stationcal STATIONCAL
+                            Station Calibration table to apply
       -t STARTTIME, --starttime STARTTIME
                             Start time (centre point of first integration),
                             YYYYMMDD_HHMMSS
       -s 0..511, --subband 0..511
       -i INTEGRATION, --integration INTEGRATION
+      -f NCHAN, --nchan NCHAN
+                            Number of channels in the blob.
       -d DIRECTION, --direction DIRECTION
                             RA,DEC,epoch. The RA/DEC can be specified in a variety
                             of ways acceptable by casacore measures,
@@ -91,6 +99,7 @@ The Measurement Set conversion tool is called lofar-station-ms:
                             number via the -s option. In case of a .cal file, this
                             is extracted from the header. Please also specify the
                             array name via -n [A6,A12]
+      -b, --tbbxc           File is TBB XC (experimental)
       -q, --quiet           Only display warnings and errors
     
     required arguments:
@@ -120,6 +129,7 @@ ACC Example:
     
     sd = ACCData("20161231_133057_acc_512x192x192.dat",
                  station_name="SE607", rcu_mode=3)
+    sd.set_station_cal("CalTable-SE607-mode3-2015.10.07.dat")
     
     # Print time, freq, flux in the direction of CygA
     sd.direction = CygA

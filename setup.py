@@ -6,7 +6,7 @@ long_description = description
 setup(
     name='lofarstationdata',
     author='Stephen Bourke',
-    version=0.8,
+    version=0.9,
     url='http://github.com/sabourke/lofarstation/',
     description=description,
     long_description=long_description,
