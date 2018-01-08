@@ -6,6 +6,7 @@ The "centos7" format files are not supported."""
 from __future__ import print_function
 import sys
 import json
+import re
 
 def multi_dim(data, shape, typ=float):
     """Reshape 'data' list into a multi dimensional list with the given shape
@@ -21,6 +22,16 @@ def multi_dim(data, shape, typ=float):
             ret.append(multi_dim(data, shape[1:], typ))
     return ret
 
+
+shape_re = re.compile("\((?P<start>\d+),(?P<end>\d+)\)")
+def read_dim(s):
+    """Hack to read new blitz format dimensions"""
+    match = shape_re.match(s)
+    if match:
+        return int(match.groupdict()["end"]) - int(match.groupdict()["start"]) + 1
+    else:
+        raise ValueError("Could not parse {}".format(s))
+
 def read_array(stream):
     str_data = stream.readline().rstrip('\n')
     if str_data == "":
@@ -31,7 +42,10 @@ def read_array(stream):
     str_data, empty = str_data.split(']')
     assert empty == ''
     str_data = [x for x in str_data.split(' ') if x != '']
-    shape = [int(s.strip(' ')) for s in shape.split('x')]
+    try:
+        shape = [read_dim(s.strip()) for s in shape.split('x')]
+    except ValueError:
+        shape = [int(s.strip(' ')) for s in shape.split('x')]
     arr = multi_dim(str_data, shape)
     assert len(str_data) == 0
     return arr
